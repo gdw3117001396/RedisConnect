@@ -592,7 +592,7 @@ public:
 	{
 		if (host.empty()) return false;
 
-		return connect(host.c_str(), port, timeout, memsz) && auth(pwd) > 0;
+		return connect(host, port, timeout, memsz) && auth(pwd) > 0;
 	}
 	int execute(Command& cmd)
 	{
