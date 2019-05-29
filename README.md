@@ -64,5 +64,5 @@ redis get key
 redis expire key 60
  
 # 获取有效时间
-redit ttl key
+redis ttl key
 ```
