@@ -68,7 +68,6 @@ void SetConsoleTextColor(E_CONSOLE_COLOR color)
 
 #endif
 
-#define GetCmdParam(idx) (idx < argc ? argv[idx] : NULL)
 
 #define ColorPrint(__COLOR__, __FMT__, ...)		\
 SetConsoleTextColor(__COLOR__);					\
@@ -113,6 +112,10 @@ bool CheckCommand(const char* fmt, ...)
 
 int main(int argc, char** argv)
 {
+	auto GetCmdParam = [&](int idx){
+		return idx < argc ? argv[idx] : NULL;
+	};
+
 	string val;
 	RedisConnect redis;
 	const char* ptr = NULL;
@@ -214,9 +217,9 @@ int main(int argc, char** argv)
 				{
 					ColorPrint(eWHITE, "%s\n", "--------------------------------------");
 
-					for (const string& item : vec)
+					for (const string& msg : vec)
 					{
-						ColorPrint(eGREEN, "%s\n", item.c_str());
+						ColorPrint(eGREEN, "%s\n", msg.c_str());
 					}
 
 					ColorPrint(eWHITE, "%s\n", "--------------------------------------");
