@@ -11,6 +11,7 @@
 
 #ifdef _MSC_VER
 
+#include <conio.h>
 #include <windows.h>
 
 #pragma comment(lib, "WS2_32.lib")
