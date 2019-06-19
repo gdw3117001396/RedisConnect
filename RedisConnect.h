@@ -13,6 +13,8 @@
 
 #include <windows.h>
 
+#pragma comment(lib, "WS2_32.lib")
+
 #else
 
 #include <errno.h>
@@ -191,7 +193,7 @@ public:
 
 			if (select(sock + 1, NULL, &ws, NULL, &tv) > 0)
 			{
-				int res = XG_ERROR;
+				int res = ERROR;
 				int len = sizeof(res);
 			
 				getsockopt(sock, SOL_SOCKET, SO_ERROR, (char*)(&res), &len);
