@@ -207,7 +207,7 @@ int main(int argc, char** argv)
 				request.add(data);
 			}
 
-			if ((res = redis.execute(request)) > 0)
+			if ((res = redis.execute(request)) >= 0)
 			{
 				ColorPrint(eWHITE, "执行命令[%s]成功[%d][%d]\n", cmd, res, redis.getStatus());
 
