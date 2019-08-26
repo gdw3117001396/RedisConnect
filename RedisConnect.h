@@ -65,8 +65,10 @@ public:
 	static const int NETCLOSE = -10;
 	static const int NETDELAY = -11;
 	static const int AUTHFAIL = -12;
-	static const int POOL_MAXLEN = 8;
-	static const int SOCKET_TIMEOUT = 10;
+
+public:
+	static int POOL_MAXLEN;
+	static int SOCKET_TIMEOUT;
 
 public:
 	class Socket
@@ -623,7 +625,7 @@ public:
 
 		return code;
 	}
-	bool connect(const string& host, int port, int timeout = 3, int memsz = 1024 * 1024)
+	bool connect(const string& host, int port, int timeout = 3, int memsz = 2 * 1024 * 1024)
 	{
 		close();
 
@@ -801,6 +803,10 @@ public:
 		static RedisConnect* temp = GetTemplate();
 		return temp->port > 0;
 	}
+	static void SetMaxConnCount(int maxlen)
+	{
+		if (maxlen > 0) POOL_MAXLEN = maxlen;
+	}
 	static shared_ptr<RedisConnect> Instance()
 	{
 		static Mutex& mtx = *GetMutex();
@@ -856,7 +862,7 @@ public:
 
 		return redis;
 	}
-	static void Setup(const string& host, int port, const string& pwd = "", int timeout = 3, int memsz = 1024 * 1024)
+	static void Setup(const string& host, int port, const string& pwd = "", int timeout = 3, int memsz = 2 * 1024 * 1024)
 	{
 #ifndef _MSC_VER
 		signal(SIGPIPE, SIG_IGN);
@@ -872,5 +878,9 @@ public:
 		redis->timeout = timeout;
 	}
 };
+
+int RedisConnect::POOL_MAXLEN = 8;
+int RedisConnect::SOCKET_TIMEOUT = 10;
+	
 ///////////////////////////////////////////////////////////////
 #endif
