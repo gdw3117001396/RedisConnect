@@ -139,7 +139,7 @@ int main(int argc, char** argv)
 
 	if (host == NULL || *host == 0) host = "127.0.0.1";
 
-	if (redis.connect(host, port, 3))
+	if (redis.connect(host, port))
 	{
 		if (passwd && *passwd)
 		{

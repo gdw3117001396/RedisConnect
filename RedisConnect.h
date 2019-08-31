@@ -99,45 +99,40 @@ public:
 		{
 			return sock == INVALID_SOCKET || sock < 0;
 		}
-		static bool SocketSetSendTimeout(SOCKET sock, int ms)
+		static bool SocketSetSendTimeout(SOCKET sock, int timeout)
 		{
 #ifndef _MSC_VER
 			struct timeval tv;
 
-			tv.tv_sec = ms / 1000;
-			tv.tv_usec = ms % 1000 * 1000;
+			tv.tv_sec = timeout / 1000;
+			tv.tv_usec = timeout % 1000 * 1000;
 
 			return setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)(&tv), sizeof(tv)) == 0;
 #else
-			return setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)(&ms), sizeof(ms)) == 0;
+			return setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)(&timeout), sizeof(timeout)) == 0;
 #endif
 		}
-		static bool SocketSetRecvTimeout(SOCKET sock, int ms)
+		static bool SocketSetRecvTimeout(SOCKET sock, int timeout)
 		{
 #ifndef _MSC_VER
 			struct timeval tv;
 
-			tv.tv_sec = ms / 1000;
-			tv.tv_usec = ms % 1000 * 1000;
+			tv.tv_sec = timeout / 1000;
+			tv.tv_usec = timeout % 1000 * 1000;
 
 			return setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)(&tv), sizeof(tv)) == 0;
 #else
-			return setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)(&ms), sizeof(ms)) == 0;
+			return setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)(&timeout), sizeof(timeout)) == 0;
 #endif
 		}
-		SOCKET SocketConnectTimeout(const char* ip, int port, double timeout)
+		SOCKET SocketConnectTimeout(const char* ip, int port, int timeout)
 		{
 			u_long mode = 1;
-			struct timeval tv;
 			struct sockaddr_in addr;
 			SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
 
 			if (IsSocketClosed(sock)) return INVALID_SOCKET;
-			
-			long ms = (long)(timeout * 1000 + 0.5);
 
-			tv.tv_sec = ms / 1000;
-			tv.tv_usec = ms % 1000;
 			addr.sin_family = AF_INET;
 			addr.sin_port = htons(port);
 			addr.sin_addr.s_addr = inet_addr(ip);
@@ -169,7 +164,7 @@ public:
 			
 			epoll_ctl(handle, EPOLL_CTL_ADD, sock, &ev);
 			
-			if (epoll_wait(handle, &evs, 1, ms) > 0)
+			if (epoll_wait(handle, &evs, 1, timeout) > 0)
 			{
 				if (evs.events & EPOLLOUT)
 				{
@@ -190,9 +185,14 @@ public:
 			
 			::close(handle);
 #else
+			struct timeval tv;
+
 			fd_set ws;
 			FD_ZERO(&ws);
 			FD_SET(sock, &ws);
+
+			tv.tv_sec = timeout / 1000;
+			tv.tv_usec = timeout % 1000 * 1000;
 
 			if (select(sock + 1, NULL, &ws, NULL, &tv) > 0)
 			{
@@ -217,15 +217,15 @@ public:
 			SocketClose(sock);
 			sock = INVALID_SOCKET;
 		}
-		bool setSendTimeout(int ms)
+		bool setSendTimeout(int timeout)
 		{
-			return SocketSetSendTimeout(sock, ms);
+			return SocketSetSendTimeout(sock, timeout);
 		}
-		bool setRecvTimeout(int ms)
+		bool setRecvTimeout(int timeout)
 		{
-			return SocketSetRecvTimeout(sock, ms);
+			return SocketSetRecvTimeout(sock, timeout);
 		}
-		bool connect(const string& ip, int port, double timeout)
+		bool connect(const string& ip, int port, int timeout)
 		{
 			close();
 
@@ -482,8 +482,6 @@ public:
 				char* dest = redis->buffer;
 				const int maxsz = redis->memsz;
 
-				timeout *= 1000;
-
 				while (readed < maxsz)
 				{
 					if ((len = sock.read(dest + readed, maxsz - readed, false)) < 0) return len;
@@ -625,7 +623,7 @@ public:
 
 		return code;
 	}
-	bool connect(const string& host, int port, int timeout = 3, int memsz = 2 * 1024 * 1024)
+	bool connect(const string& host, int port, int timeout = 3000, int memsz = 2 * 1024 * 1024)
 	{
 		close();
 
@@ -862,7 +860,7 @@ public:
 
 		return redis;
 	}
-	static void Setup(const string& host, int port, const string& pwd = "", int timeout = 3, int memsz = 2 * 1024 * 1024)
+	static void Setup(const string& host, int port, const string& pwd = "", int timeout = 3000, int memsz = 2 * 1024 * 1024)
 	{
 #ifndef _MSC_VER
 		signal(SIGPIPE, SIG_IGN);
