@@ -388,6 +388,8 @@ public:
 
 				while (cnt > 0)
 				{
+					if (*str == '*') return parse(str, tail - str);
+
 					end = parseNode(str, tail - str);
 
 					if (end == NULL) return DATAERR;
