@@ -1,13 +1,7 @@
 #ifndef REDIS_CONNECT_H
 #define REDIS_CONNECT_H
 ///////////////////////////////////////////////////////////////
-#include <map>
-#include <mutex>
-#include <memory>
-#include <vector>
-#include <string>
-#include <sstream>
-#include <cstring>
+#include "ResPool.h"
 
 #ifdef _MSC_VER
 
@@ -216,6 +210,10 @@ public:
 		{
 			SocketClose(sock);
 			sock = INVALID_SOCKET;
+		}
+		bool isClosed() const
+		{
+			return IsSocketClosed(sock);
 		}
 		bool setSendTimeout(int timeout)
 		{
@@ -557,10 +555,10 @@ protected:
 	int timeout = 0;
 	char* buffer = NULL;
 
-	string pwd;
 	string msg;
 	string host;
 	Socket sock;
+	string passwd;
 
 public:
 	~RedisConnect()
@@ -575,7 +573,9 @@ public:
 	}
 	int getErrorCode() const
 	{
-		return code;
+		if (sock.isClosed()) return FAIL;
+
+		return code < 0 ? code : 0;
 	}
 	string getErrorString() const
 	{
@@ -597,7 +597,7 @@ public:
 	{
 		if (host.empty()) return false;
 
-		return connect(host, port, timeout, memsz) && auth(pwd) > 0;
+		return connect(host, port, timeout, memsz) && auth(passwd) > 0;
 	}
 	int execute(Command& cmd)
 	{
@@ -661,13 +661,13 @@ public:
 	{
 		return execute("hlen", key) == OK ? status : code;
 	}
-	int auth(const string& pwd)
+	int auth(const string& passwd)
 	{
-		this->pwd = pwd;
+		this->passwd = passwd;
 
-		if (pwd.empty()) return OK;
+		if (passwd.empty()) return OK;
 
-		return execute("auth", pwd);
+		return execute("auth", passwd);
 	}
 	int get(const string& key, string& val)
 	{
@@ -779,29 +779,40 @@ public:
 	}
 
 protected:
-	typedef map<shared_ptr<RedisConnect>, time_t> ConnectMap;
+	virtual shared_ptr<RedisConnect> grasp() const
+	{
+		static ResPool<RedisConnect> pool([&]() {
+			shared_ptr<RedisConnect> redis = make_shared<RedisConnect>();
 
-	static Mutex* GetMutex()
-	{
-		static Mutex mtx;
-		return &mtx;
-	}
-	static RedisConnect* GetTemplate()
-	{
-		static RedisConnect redis;
-		return &redis;
-	}
-	static ConnectMap* GetConnectMap()
-	{
-		static ConnectMap connmap;
-		return &connmap;
+			if (redis && redis->connect(host, port, timeout, memsz))
+			{
+				if (redis->auth(passwd)) return redis;
+			}
+
+			return redis = NULL;
+		}, POOL_MAXLEN);
+
+		shared_ptr<RedisConnect> redis = pool.get();
+
+		if (redis && redis->getErrorCode())
+		{
+			pool.disable(redis);
+
+			return grasp();
+		}
+
+		return redis;
 	}
 
 public:
 	static bool CanUse()
 	{
-		static RedisConnect* temp = GetTemplate();
-		return temp->port > 0;
+		return GetTemplate()->port > 0;
+	}
+	static RedisConnect* GetTemplate()
+	{
+		static RedisConnect redis;
+		return &redis;
 	}
 	static void SetMaxConnCount(int maxlen)
 	{
@@ -809,60 +820,9 @@ public:
 	}
 	static shared_ptr<RedisConnect> Instance()
 	{
-		static Mutex& mtx = *GetMutex();
-		static RedisConnect& temp = *GetTemplate();
-		static map<shared_ptr<RedisConnect>, time_t>& datmap = *GetConnectMap();
-
-		time_t now = time(NULL);
-		shared_ptr<RedisConnect> redis;
-
-		if (now > 0)
-		{
-			Locker lk(mtx);
-
-			for (auto item : datmap)
-			{
-				if (item.first.use_count() == 2)
-				{
-					redis = item.first;
-
-					if (item.second + 60 > now) return redis;
-
-					datmap.erase(item.first);
-
-					break;
-				}
-			}
-		}
-
-		auto get = [&](){
-			if (redis)
-			{
-				if (redis->ping() > 0 || redis->reconnect()) return true;
-			}
-			else
-			{
-				redis = make_shared<RedisConnect>();
-
-				if (redis->connect(temp.host, temp.port, temp.timeout, temp.memsz))
-				{
-					if (redis->auth(temp.pwd)) return true;
-				}
-			}
-
-			return false;
-		};
-
-		if (get())
-		{
-			Locker lk(mtx);
-
-			if (datmap.size() < POOL_MAXLEN) datmap.insert(pair<shared_ptr<RedisConnect>, time_t>(redis, now));
-		}
-
-		return redis;
+		return GetTemplate()->grasp();
 	}
-	static void Setup(const string& host, int port, const string& pwd = "", int timeout = 3000, int memsz = 2 * 1024 * 1024)
+	static void Setup(const string& host, int port, const string& passwd = "", int timeout = 3000, int memsz = 2 * 1024 * 1024)
 	{
 #ifndef _MSC_VER
 		signal(SIGPIPE, SIG_IGN);
@@ -871,10 +831,10 @@ public:
 #endif
 		RedisConnect* redis = GetTemplate();
 
-		redis->pwd = pwd;
 		redis->host = host;
 		redis->port = port;
 		redis->memsz = memsz;
+		redis->passwd = passwd;
 		redis->timeout = timeout;
 	}
 };
