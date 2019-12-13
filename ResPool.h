@@ -12,6 +12,12 @@
 #include <sstream>
 #include <functional>
 
+#ifndef _MSC_VER
+
+#include <unistd.h>
+
+#endif
+
 using namespace std;
 
 template<typename T> class ResPool
