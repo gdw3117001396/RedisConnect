@@ -128,8 +128,11 @@ public:
 
 		while (true)
 		{
+#ifdef _MSC_VER
 			Sleep(10);
-
+#else
+			usleep(10000);
+#endif
 			if (data = grasp()) return data;
 
 			if (endtime < time(NULL)) break;
