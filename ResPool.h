@@ -8,6 +8,7 @@
 #include <memory>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <sstream>
 #include <functional>
 
