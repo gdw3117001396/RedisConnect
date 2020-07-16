@@ -27,6 +27,7 @@
 #include <sys/statfs.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <sys/syscall.h>
 
 #define ioctlsocket ioctl
 #define INVALID_SOCKET (SOCKET)(-1)
@@ -427,6 +428,11 @@ public:
 		{
 			this->status = 0;
 		}
+		Command(const string& cmd)
+		{
+			vec.push_back(cmd);
+			this->status = 0;
+		}
 		void add(const char* val)
 		{
 			vec.push_back(val);
@@ -775,6 +781,120 @@ public:
 	int zrange(vector<string>& vec, const string& key, int start, int end, bool withscore = false)
 	{
 		return withscore ? execute(vec, "zrange", key, start, end, "withscores") : execute(vec, "zrange", key, start, end);
+	}
+
+
+public:
+	template<class ...ARGS>
+	int eval(const string& lua)
+	{
+		vector<string> vec;
+
+		return eval(lua, vec);
+	}
+	template<class ...ARGS>
+	int eval(const string& lua, const string& key, ARGS ...args)
+	{
+		vector<string> vec;
+	
+		vec.push_back(key);
+	
+		return eval(lua, vec, args...);
+	}
+	template<class ...ARGS>
+	int eval(const string& lua, const vector<string>& keys, ARGS ...args)
+	{
+		vector<string> vec;
+
+		return eval(vec, lua, keys, args...);
+	}
+	template<class ...ARGS>
+	int eval(vector<string>& vec, const string& lua, const vector<string>& keys, ARGS ...args)
+	{
+		int len = 0;
+		Command cmd("eval");
+
+		cmd.add(lua);
+		cmd.add(len = keys.size());
+
+		if (len-- > 0)
+		{
+			for (int i = 0; i < len; i++) cmd.add(keys[i]);
+
+			cmd.add(keys.back(), args...);
+		}
+
+		cmd.getResult(this, timeout);
+	
+		if (code > 0) std::swap(vec, cmd.res);
+
+		return code;
+	}
+
+	string get(const string& key)
+	{
+		string res;
+
+		get(key, res);
+
+		return res;
+	}
+	string hget(const string& key, const string& filed)
+	{
+		string res;
+
+		hget(key, filed, res);
+
+		return res;
+	}
+
+	const char* getLockId()
+	{
+		thread_local char id[0xFF] = {0};
+
+		auto GetHost = [](){
+			char hostname[0xFF];
+
+			if (gethostname(hostname, sizeof(hostname)) < 0) return "unknow host";
+
+			struct hostent* data = gethostbyname(hostname);
+
+			return (const char*)inet_ntoa(*(struct in_addr*)(data->h_addr_list[0]));
+		};
+
+		if (*id == 0)
+		{
+#ifdef _MSC_VER
+			snprintf(id, sizeof(id) - 1, "%s:%ld:%ld", GetHost(), (long)GetCurrentProcessId(), (long)GetCurrentThreadId());
+#else
+			snprintf(id, sizeof(id) - 1, "%s:%ld:%ld", GetHost(), (long)getpid(), (long)syscall(SYS_gettid));
+#endif
+		}
+
+		return id;
+	}
+	bool unlock(const string& key)
+	{
+		const char* lua = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";
+
+		return eval(lua, key, getLockId()) > 0 && status == OK;
+	}
+	bool lock(const string& key, int timeout = 30)
+	{
+		int delay = timeout * 1000;
+
+		for (int i = 0; i < delay; i += 10)
+		{
+			if (execute("set", key, getLockId(), "nx", "ex", timeout) >= 0) return true;
+
+#ifdef _MSC_VER
+			Sleep(10);
+#else
+			usleep(10 * 1000);
+#endif
+		}
+
+		return false;
 	}
 
 protected:
