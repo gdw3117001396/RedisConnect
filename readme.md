@@ -39,6 +39,18 @@ int main(int argc, char** argv)
  
 	//执行del命令删除键值
 	redis->execute("del", "key");
+
+	//获取分布式锁
+	if (redis->lock("lockey"))
+	{
+		puts("获取分布式锁成功");
+
+		//释放分布式锁
+		if (redis->unlock("lockey"))
+		{
+			puts("释放分布式锁成功");
+		}
+	}
  
 	return 0;
 }
