@@ -64,16 +64,16 @@
 		int ch;
 		int fd = STDIN_FILENO;
 
-		if (tcgetattr(fd, &tm) < 0) return XG_ERROR;
+		if (tcgetattr(fd, &tm) < 0) return 0;
 
 		old = tm;
 		cfmakeraw(&tm);
 
-		if (tcsetattr(fd, TCSANOW, &tm) < 0) return XG_ERROR;
+		if (tcsetattr(fd, TCSANOW, &tm) < 0) return 0;
 
 		ch = fgetc(stdin);
 
-		if (tcsetattr(fd, TCSANOW, &old) < 0) return XG_ERROR;
+		if (tcsetattr(fd, TCSANOW, &old) < 0) return 0;
 
 		return ch;
 	}
