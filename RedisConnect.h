@@ -3,14 +3,7 @@
 ///////////////////////////////////////////////////////////////
 #include "ResPool.h"
 
-#ifdef _MSC_VER
-
-#include <conio.h>
-#include <windows.h>
-
-#pragma comment(lib, "WS2_32.lib")
-
-#else
+#ifdef XG_LINUX
 
 #include <errno.h>
 #include <netdb.h>
@@ -73,7 +66,7 @@ public:
 	public:
 		static bool IsSocketTimeout()
 		{
-#ifndef _MSC_VER
+#ifdef XG_LINUX
 			return errno == 0 || errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
 #else
 			return WSAGetLastError() == WSAETIMEDOUT;
@@ -83,7 +76,7 @@ public:
 		{
 			if (IsSocketClosed(sock)) return;
 
-#ifndef _MSC_VER
+#ifdef XG_LINUX
 			::close(sock);
 #else
 			::closesocket(sock);
@@ -95,7 +88,7 @@ public:
 		}
 		static bool SocketSetSendTimeout(SOCKET sock, int timeout)
 		{
-#ifndef _MSC_VER
+#ifdef XG_LINUX
 			struct timeval tv;
 
 			tv.tv_sec = timeout / 1000;
@@ -108,7 +101,7 @@ public:
 		}
 		static bool SocketSetRecvTimeout(SOCKET sock, int timeout)
 		{
-#ifndef _MSC_VER
+#ifdef XG_LINUX
 			struct timeval tv;
 
 			tv.tv_sec = timeout / 1000;
@@ -140,7 +133,7 @@ public:
 				return sock;
 			}
 
-#ifndef _MSC_VER
+#ifdef XG_LINUX
 			struct epoll_event ev;
 			struct epoll_event evs;
 			int handle = epoll_create(1);
@@ -864,10 +857,10 @@ public:
 
 		if (*id == 0)
 		{
-#ifdef _MSC_VER
-			snprintf(id, sizeof(id) - 1, "%s:%ld:%ld", GetHost(), (long)GetCurrentProcessId(), (long)GetCurrentThreadId());
-#else
+#ifdef XG_LINUX
 			snprintf(id, sizeof(id) - 1, "%s:%ld:%ld", GetHost(), (long)getpid(), (long)syscall(SYS_gettid));
+#else
+			snprintf(id, sizeof(id) - 1, "%s:%ld:%ld", GetHost(), (long)GetCurrentProcessId(), (long)GetCurrentThreadId());
 #endif
 		}
 
@@ -887,11 +880,7 @@ public:
 		{
 			if (execute("set", key, getLockId(), "nx", "ex", timeout) >= 0) return true;
 
-#ifdef _MSC_VER
 			Sleep(10);
-#else
-			usleep(10 * 1000);
-#endif
 		}
 
 		return false;
@@ -943,7 +932,7 @@ public:
 	}
 	static void Setup(const string& host, int port, const string& passwd = "", int timeout = 3000, int memsz = 2 * 1024 * 1024)
 	{
-#ifndef _MSC_VER
+#ifdef XG_LINUX
 		signal(SIGPIPE, SIG_IGN);
 #else
 		WSADATA data; WSAStartup(MAKEWORD(2, 2), &data);

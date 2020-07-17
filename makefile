@@ -1,7 +1,11 @@
 target: app
 
 app: RedisConnect.h RedisCommand.cpp
-	g++ -std=c++11 -pthread -lutil -lbsd -ldl -lm -o redis RedisCommand.cpp
-
+ifdef WINDIR
+	g++ -std=c++11 -pthread -o redis RedisCommand.cpp -lws2_32 -lpsapi -lm
+else
+	g++ -std=c++11 -pthread -DXG_LINUX -o redis RedisCommand.cpp -lutil -lbsd -ldl -lm
+endif
+	
 clean:
 	@rm redis

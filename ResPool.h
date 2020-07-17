@@ -1,22 +1,20 @@
 #ifndef XG_RESPOOL_H
 #define XG_RESPOOL_H
 //////////////////////////////////////////////////////////////////////////////
+#include "typedef.h"
+
 #include <ctime>
 #include <mutex>
 #include <vector>
 #include <string>
 #include <memory>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <thread>
 #include <sstream>
+#include <iostream>
+#include <iterator>
+#include <typeinfo>
+#include <algorithm>
 #include <functional>
-
-#ifndef _MSC_VER
-
-#include <unistd.h>
-
-#endif
 
 using namespace std;
 
@@ -134,11 +132,8 @@ public:
 
 		while (true)
 		{
-#ifdef _MSC_VER
 			Sleep(10);
-#else
-			usleep(10000);
-#endif
+
 			if (data = grasp()) return data;
 
 			if (endtime < time(NULL)) break;
