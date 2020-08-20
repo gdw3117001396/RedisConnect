@@ -154,7 +154,7 @@ int main(int argc, char** argv)
 					}
 
 					ColorPrint(eWHITE, "%s\n", "--------------------------------------");
-					ColorPrint(eWHITE, "共返回%d条记录\n\n", vec.size());
+					ColorPrint(eWHITE, "共返回%ld条记录\n\n", vec.size());
 				}
 			}
 			else
