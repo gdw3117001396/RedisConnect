@@ -8,6 +8,12 @@
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
+#else
+
+#ifndef XG_MINGW
+#define XG_LINUX
+#endif
+
 #endif
 
 #include <time.h>
