@@ -6,7 +6,7 @@
 
 # 安装方法
 #### 1、下载源码
-##### git clone https://gitee.com/xungen/redisconnect.git
+
 
 #### 2、直接在工程中包含<a href='https://gitee.com/xungen/redisconnect/blob/master/RedisConnect.h' target='_blank'>RedisConnect.h</a>头文件即可(示例代码如下)
 ```

@@ -31,6 +31,7 @@ typedef int SOCKET;
 
 using namespace std;
 
+// 主要的redis连接类
 class RedisConnect
 {
 	typedef std::mutex Mutex;
@@ -39,23 +40,23 @@ class RedisConnect
 	friend class Command;
 
 public:
-	static const int OK = 1;
-	static const int FAIL = -1;
-	static const int IOERR = -2;
-	static const int SYSERR = -3;
-	static const int NETERR = -4;
-	static const int TIMEOUT = -5;
-	static const int DATAERR = -6;
-	static const int SYSBUSY = -7;
-	static const int PARAMERR = -8;
-	static const int NOTFOUND = -9;
-	static const int NETCLOSE = -10;
-	static const int NETDELAY = -11;
-	static const int AUTHFAIL = -12;
+	static const int OK = 1;   // 正常
+	static const int FAIL = -1;  // 失败
+	static const int IOERR = -2;  // IO出错
+	static const int SYSERR = -3;  // 系统错误
+	static const int NETERR = -4;  // 网络错误
+	static const int TIMEOUT = -5;  // 超时
+	static const int DATAERR = -6;  // 数据错误
+	static const int SYSBUSY = -7;  // 系统繁忙
+	static const int PARAMERR = -8;  // 参数错误
+	static const int NOTFOUND = -9;  // 未找到
+	static const int NETCLOSE = -10;  // 网络关闭
+	static const int NETDELAY = -11;  // 网络延迟
+	static const int AUTHFAIL = -12;  // 密码不对
 
 public:
-	static int POOL_MAXLEN;
-	static int SOCKET_TIMEOUT;
+	static int POOL_MAXLEN;  // 最大池子个数
+	static int SOCKET_TIMEOUT;  // sokect超时
 
 public:
 	class Socket
@@ -64,6 +65,7 @@ public:
 		SOCKET sock = INVALID_SOCKET;
 
 	public:
+		// 超时
 		static bool IsSocketTimeout()
 		{
 #ifdef XG_LINUX
@@ -72,6 +74,7 @@ public:
 			return WSAGetLastError() == WSAETIMEDOUT;
 #endif
 		}
+		// 关闭socket
 		static void SocketClose(SOCKET sock)
 		{
 			if (IsSocketClosed(sock)) return;
@@ -82,10 +85,12 @@ public:
 			::closesocket(sock);
 #endif
 		}
+		// socket是否关闭了
 		static bool IsSocketClosed(SOCKET sock)
 		{
 			return sock == INVALID_SOCKET || sock < 0;
 		}
+		// 为socket设置发送超时时间
 		static bool SocketSetSendTimeout(SOCKET sock, int timeout)
 		{
 #ifdef XG_LINUX
@@ -93,12 +98,13 @@ public:
 
 			tv.tv_sec = timeout / 1000;
 			tv.tv_usec = timeout % 1000 * 1000;
-
+			// 发送超时
 			return setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)(&tv), sizeof(tv)) == 0;
 #else
 			return setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)(&timeout), sizeof(timeout)) == 0;
 #endif
 		}
+		// 为socket设置接收超时时间
 		static bool SocketSetRecvTimeout(SOCKET sock, int timeout)
 		{
 #ifdef XG_LINUX
@@ -112,6 +118,8 @@ public:
 			return setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)(&timeout), sizeof(timeout)) == 0;
 #endif
 		}
+
+		// socket连接服务器
 		SOCKET SocketConnectTimeout(const char* ip, int port, int timeout)
 		{
 			u_long mode = 1;
@@ -122,10 +130,12 @@ public:
 
 			addr.sin_family = AF_INET;
 			addr.sin_port = htons(port);
-			addr.sin_addr.s_addr = inet_addr(ip);
-
-			ioctlsocket(sock, FIONBIO, &mode); mode = 0;
-
+			// addr.sin_addr.s_addr = inet_addr(ip);
+			inet_pton(AF_INET, ip, &addr.sin_addr);
+			// 设置套接字非阻塞，mode = 0表示清除，mode非0表示设置本套接口的非阻塞标志
+			ioctlsocket(sock, FIONBIO, &mode); 
+			mode = 0;
+			// 成功连接
 			if (::connect(sock, (struct sockaddr*)(&addr), sizeof(addr)) == 0)
 			{
 				ioctlsocket(sock, FIONBIO, &mode);
@@ -134,6 +144,7 @@ public:
 			}
 
 #ifdef XG_LINUX
+			// 连接失败就用epoll来监听sock，看看有没有读事件
 			struct epoll_event ev;
 			struct epoll_event evs;
 			int handle = epoll_create(1);
@@ -157,10 +168,10 @@ public:
 				{
 					int res = FAIL;
 					socklen_t len = sizeof(res);
-			
+					// 获取sock的错误
 					getsockopt(sock, SOL_SOCKET, SO_ERROR, (char*)(&res), &len);
 					ioctlsocket(sock, FIONBIO, &mode);
-			
+					// 如果没有错误
 					if (res == 0)
 					{
 						::close(handle);
@@ -199,23 +210,28 @@ public:
 		}
 
 	public:
+		// 关闭sock
 		void close()
 		{
 			SocketClose(sock);
 			sock = INVALID_SOCKET;
 		}
+		// sock是否关闭
 		bool isClosed() const
 		{
 			return IsSocketClosed(sock);
 		}
+		// 为sock设置发送超时时间
 		bool setSendTimeout(int timeout)
 		{
 			return SocketSetSendTimeout(sock, timeout);
 		}
+		// 为sock设置接受超时时间
 		bool setRecvTimeout(int timeout)
 		{
 			return SocketSetRecvTimeout(sock, timeout);
 		}
+		// 连接
 		bool connect(const string& ip, int port, int timeout)
 		{
 			close();
@@ -264,6 +280,7 @@ public:
 
 			return writed;
 		}
+		
 		int read(void* data, int count, bool completed)
 		{
 			char* str = (char*)(data);
@@ -575,6 +592,7 @@ public:
 
 		return code < 0 ? code : 0;
 	}
+	// 返回错误信息
 	string getErrorString() const
 	{
 		return msg;
@@ -610,6 +628,7 @@ public:
 
 		return cmd.getResult(this, timeout);
 	}
+	// 执行没有写到的命令
 	template<class DATA_TYPE, class ...ARGS>
 	int execute(vector<string>& vec, DATA_TYPE val, ARGS ...args)
 	{
@@ -689,6 +708,7 @@ public:
 	{
 		return execute("expire", key, timeout);
 	}
+	// 查看键值是否存在
 	int keys(vector<string>& vec, const string& key)
 	{
 		return execute(vec, "keys", key);

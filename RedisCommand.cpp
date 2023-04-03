@@ -49,26 +49,32 @@ int main(int argc, char** argv)
 
 	string val;
 	RedisConnect redis;
-	const char* ptr = NULL;
-	const char* cmd = GetCmdParam(1);
-	const char* key = GetCmdParam(2);
-	const char* field = GetCmdParam(3);
+	const char* ptr = NULL;  //redis
+	const char* cmd = GetCmdParam(1);  // 命令
+	const char* key = GetCmdParam(2);  // 键值
+	//const char* field = GetCmdParam(3); // 没用到
 
 	int port = 6379;
-	const char* host = getenv("REDIS_HOST");
-	const char* passwd = getenv("REDIS_PASSWORD");
+	// host = 127.0.0.1:6379
+	const char* host = getenv("REDIS_HOST"); // 获取环境变量
+	// passwd = 123456
+	const char* passwd = getenv("REDIS_PASSWORD"); // 获取密码
 
 	if (host)
 	{
+		// 查找':'第一次出现的位置,ptr = :6379
 		if (ptr = strchr(host, ':'))
 		{
+			// 127.0.0.1,相当于迭代器构造
 			static string shost(host, ptr);
-			port = atoi(ptr + 1);
-			host = shost.c_str();
+			port = atoi(ptr + 1); // 6379 端口号
+			host = shost.c_str(); // 127.0.0.1 主机号
 		}
 	}
 
-	if (host == NULL || *host == 0) host = "127.0.0.1";
+	if (host == NULL || *host == 0){
+		host = "127.0.0.1";
+	} 
 
 	if (redis.connect(host, port))
 	{
@@ -91,41 +97,32 @@ int main(int argc, char** argv)
 
 		int res = 0;
 		string tmp = cmd;
-
+		// 将所有命令变为大写
 		std::transform(tmp.begin(), tmp.end(), tmp.begin(), ::toupper);
 
-		if (tmp == "DELS" && key && *key)
-		{
+		if (tmp == "DELS" && key && *key){
 			vector<string> vec;
-
-			if (redis.keys(vec, key) > 0)
-			{
-				if (CheckCommand("确认要删除键值[%s]？", key))
-				{
+			// 查看键值是否存在，并将对应键值存入到vec中
+			if (redis.keys(vec, key) > 0){
+				if (CheckCommand("确认要删除键值[%s]?", key)){
 					ColorPrint(eWHITE, "%s\n", "--------------------------------------");
 
-					for (const string& item : vec)
-					{
-						if (redis.del(item))
-						{
+					for (const string& item : vec){
+						if (redis.del(item)){
 							ColorPrint(eGREEN, "删除键值[%s]成功\n", item.c_str());
 						}
-						else
-						{
+						else{
 							ColorPrint(eRED, "删除键值[%s]失败\n", item.c_str());
 						}
 					}
 
 					ColorPrint(eWHITE, "%s\n\n", "--------------------------------------");
 				}
-			}
-			else
+			}else
 			{
 				ColorPrint(eRED, "删除键值[%s]失败\n", key);
 			}
-		}
-		else
-		{
+		}else{
 			int idx = 1;
 			RedisConnect::Command request;
 
