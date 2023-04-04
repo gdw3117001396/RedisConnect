@@ -56,16 +56,16 @@ int main(int argc, char** argv)
 
 	int port = 6379;
 	// host = 127.0.0.1:6379
-	const char* host = getenv("REDIS_HOST"); // 获取环境变量
+	const char* host = getenv("REDIS_HOST"); // 获取环境变量host
 	// passwd = 123456
-	const char* passwd = getenv("REDIS_PASSWORD"); // 获取密码
+	const char* passwd = getenv("REDIS_PASSWORD"); // 获取环境变量密码
 
 	if (host)
 	{
 		// 查找':'第一次出现的位置,ptr = :6379
 		if (ptr = strchr(host, ':'))
 		{
-			// 127.0.0.1,相当于迭代器构造
+			// 127.0.0.1,相当于迭代器构造函数
 			static string shost(host, ptr);
 			port = atoi(ptr + 1); // 6379 端口号
 			host = shost.c_str(); // 127.0.0.1 主机号
@@ -124,10 +124,11 @@ int main(int argc, char** argv)
 			}
 		}else{
 			int idx = 1;
-			RedisConnect::Command request;
+			RedisConnect::Command request; // redis命令请求
 
 			while (true)
 			{
+				// 从命令开始取，后面所有的参数
 				const char* data = GetCmdParam(idx++);
 
 				if (data == NULL) break;

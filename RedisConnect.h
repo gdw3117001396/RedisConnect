@@ -242,6 +242,7 @@ public:
 		}
 
 	public:
+		// 发送消息
 		int write(const void* data, int count)
 		{
 			const char* str = (const char*)(data);
@@ -280,7 +281,7 @@ public:
 
 			return writed;
 		}
-		
+		// 接受消息
 		int read(void* data, int count, bool completed)
 		{
 			char* str = (char*)(data);
@@ -345,14 +346,22 @@ public:
 		friend RedisConnect;
 
 	protected:
-		int status;
-		string msg;
-		vector<string> res;
-		vector<string> vec;
+		int status;   // 状态
+		string msg;   // 提示信息
+		vector<string> res;  // 收到的回复字段
+		vector<string> vec;  // 所有的命令字段
 
 	protected:
+		// 解析返回消息
 		int parse(const char* msg, int len)
 		{
+			/*
+				简单字符串：Simple Strings，第一个字节响应 +
+				错误：Errors，第一个字节响应 -
+				整型：Integers，第一个字节响应 :
+				批量字符串：Bulk Strings，第一个字节响应 $
+				数组：Arrays，第一个字节响应 *
+			*/
 			if (*msg == '$')
 			{
 				const char* end = parseNode(msg, len);
@@ -361,8 +370,8 @@ public:
 
 				switch (end - msg)
 				{
-				case 0: return TIMEOUT;
-				case -1: return NOTFOUND;
+					case 0: return TIMEOUT;
+					case -1: return NOTFOUND;
 				}
 
 				return OK;
@@ -380,7 +389,7 @@ public:
 
 				if (*msg == '+') return OK;
 				if (*msg == '-') return FAIL;
-
+				// 如果是整型
 				this->status = atoi(str);
 
 				return OK;
@@ -415,6 +424,7 @@ public:
 		const char* parseNode(const char* msg, int len)
 		{
 			const char* str = msg + 1;
+			// 返回str种第一次出现"\r\n"的位置,如果不存在返回null
 			const char* end = strstr(str, "\r\n");
 
 			if (end == NULL) return msg;
@@ -462,12 +472,20 @@ public:
 		}
 
 	public:
+		// 将vec用特定的方式拼接成string
 		string toString() const
 		{
 			ostringstream out;
-
+			// set k1 v1 
+			/*  resp协议
+				*3\r\n
+					$3\r\nSET\r\n
+					$2\r\nk1\r\n
+					$2\r\nv2\r\n
+			*/
+			//  *vec的个数加上"\r\n"
 			out << "*" << vec.size() << "\r\n";
-
+			// 然后对vec中的那个item都用 "$" + item的长度 + "\r\n" + item + "\r\n"
 			for (const string& item : vec)
 			{
 				out << "$" << item.length() << "\r\n" << item << "\r\n";
@@ -479,23 +497,26 @@ public:
 		{
 			return res.at(idx);
 		}
+		//
 		const vector<string>& getDataList() const
 		{
 			return res;
 		}
 		int getResult(RedisConnect* redis, int timeout)
 		{
+			// 发送消息，再接收消息
 			auto doWork = [&]() {
-				string msg = toString();
-				Socket& sock = redis->sock;
+				string msg = toString(); // 将vec中的每一项拼接成msg
+				Socket& sock = redis->sock;   
 
-				if (sock.write(msg.c_str(), msg.length()) < 0) return NETERR;
-
+				if (sock.write(msg.c_str(), msg.length()) < 0) {
+					return NETERR;
+				}
 				int len = 0;
 				int delay = 0;
 				int readed = 0;
-				char* dest = redis->buffer;
-				const int maxsz = redis->memsz;
+				char* dest = redis->buffer;  // 接受数据缓冲区
+				const int maxsz = redis->memsz;  // 
 
 				while (readed < maxsz)
 				{
@@ -505,10 +526,10 @@ public:
 					{
 						delay += SOCKET_TIMEOUT;
 
-						if (delay > timeout) return TIMEOUT;
-					}
-					else
-					{
+						if (delay > timeout){
+							return TIMEOUT;
+						}
+					}else{
 						dest[readed += len] = 0;
 
 						if ((len = parse(dest, readed)) == TIMEOUT)
@@ -563,17 +584,17 @@ public:
 	};
 
 protected:
-	int code = 0;
-	int port = 0;
-	int memsz = 0;
-	int status = 0;
-	int timeout = 0;
-	char* buffer = NULL;
+	int code = 0;  // redis当前状态，1是正常，其它都是错误
+	int port = 0;  // 端口号
+	int memsz = 0; // 缓冲区大小
+	int status = 0;   // 
+	int timeout = 0;  // 超时时间
+	char* buffer = NULL; // 缓冲区
 
-	string msg;
-	string host;
-	Socket sock;
-	string passwd;
+	string msg;   // 提示信息
+	string host;  // 主机ip地址
+	Socket sock;  // fd
+	string passwd;  // 密码
 
 public:
 	~RedisConnect()
@@ -582,10 +603,12 @@ public:
 	}
 
 public:
+	// 获取状态
 	int getStatus() const
 	{
 		return status;
 	}
+	// 返回错误码，redis连接的错误
 	int getErrorCode() const
 	{
 		if (sock.isClosed()) return FAIL;
@@ -609,16 +632,19 @@ public:
 
 		sock.close();
 	}
+
 	bool reconnect()
 	{
 		if (host.empty()) return false;
 
 		return connect(host, port, timeout, memsz) && auth(passwd) > 0;
 	}
+
 	int execute(Command& cmd)
 	{
 		return cmd.getResult(this, timeout);
 	}
+
 	template<class DATA_TYPE, class ...ARGS>
 	int execute(DATA_TYPE val, ARGS ...args)
 	{
@@ -628,7 +654,7 @@ public:
 
 		return cmd.getResult(this, timeout);
 	}
-	// 执行没有写到的命令
+	// 执行命令的真正函数
 	template<class DATA_TYPE, class ...ARGS>
 	int execute(vector<string>& vec, DATA_TYPE val, ARGS ...args)
 	{
@@ -642,10 +668,11 @@ public:
 
 		return code;
 	}
+	// 初始化连接
 	bool connect(const string& host, int port, int timeout = 3000, int memsz = 2 * 1024 * 1024)
 	{
 		close();
-
+		// 真正的在socket类中进行连接
 		if (sock.connect(host, port, timeout))
 		{
 			sock.setSendTimeout(SOCKET_TIMEOUT);
@@ -907,8 +934,10 @@ public:
 	}
 
 protected:
+	// 从连接池中拿一条连接
 	virtual shared_ptr<RedisConnect> grasp() const
 	{
+		//只有第一次会初始化
 		static ResPool<RedisConnect> pool([&]() {
 			shared_ptr<RedisConnect> redis = make_shared<RedisConnect>();
 
@@ -922,6 +951,7 @@ protected:
 
 		shared_ptr<RedisConnect> redis = pool.get();
 
+		// 当前拿出来的连接有问题，再重新拿一条
 		if (redis && redis->getErrorCode())
 		{
 			pool.disable(redis);
@@ -946,10 +976,12 @@ public:
 	{
 		if (maxlen > 0) POOL_MAXLEN = maxlen;
 	}
+	// 获取redis连接实例
 	static shared_ptr<RedisConnect> Instance()
 	{
 		return GetTemplate()->grasp();
 	}
+	//  未用到
 	static void Setup(const string& host, int port, const string& passwd = "", int timeout = 3000, int memsz = 2 * 1024 * 1024)
 	{
 #ifdef XG_LINUX

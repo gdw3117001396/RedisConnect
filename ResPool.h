@@ -206,7 +206,7 @@ public:
 		while (true)
 		{
 			Sleep(10);
-			// 抓取一个数据不为空
+			// 抓取一条连接
 			if (data = grasp()) return data;
 
 			if (endtime < time(NULL)) break;
