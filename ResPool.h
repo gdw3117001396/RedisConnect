@@ -20,8 +20,7 @@ using namespace std;
 
 template<typename T> class ResPool
 {
-	class Data
-	{
+	class Data{
 	public:
 		int num; // 拿的次数
 		time_t utime; // 时间
@@ -54,7 +53,7 @@ protected:
 	mutex mtx; // 锁
 	int maxlen;  // 
 	int timeout; // 过期时间
-	vector<Data> vec; // 
+	vector<Data> vec; // 连接池
 	function<shared_ptr<T>()> func; // 函数指针
 public:
 
@@ -127,7 +126,9 @@ public:
 
 	shared_ptr<T> get()
 	{
-		if (timeout <= 0) return func();
+		if (timeout <= 0) {
+			return func();
+		}
 /*
 		auto grasp = [&](){
 			int len = 0;

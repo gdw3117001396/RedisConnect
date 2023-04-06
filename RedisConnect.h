@@ -368,10 +368,11 @@ public:
 
 				if (end == NULL) return DATAERR;
 
-				switch (end - msg)
-				{
-					case 0: return TIMEOUT;
-					case -1: return NOTFOUND;
+				switch (end - msg){
+					case 0 : 
+						return TIMEOUT;
+					case -1 : 
+						return NOTFOUND;
 				}
 
 				return OK;
@@ -380,7 +381,9 @@ public:
 			const char* str = msg + 1;
 			const char* end = strstr(str, "\r\n");
 
-			if (end == NULL) return TIMEOUT;
+			if (end == NULL) {
+				return TIMEOUT;
+			}
 
 			if (*msg == '+' || *msg == '-' || *msg == ':')
 			{
@@ -508,7 +511,7 @@ public:
 			auto doWork = [&]() {
 				string msg = toString(); // 将vec中的每一项拼接成msg
 				Socket& sock = redis->sock;   
-
+				cout << msg << endl;
 				if (sock.write(msg.c_str(), msg.length()) < 0) {
 					return NETERR;
 				}
@@ -644,7 +647,7 @@ public:
 	{
 		return cmd.getResult(this, timeout);
 	}
-
+	//调用成功返回值不小于零(你可以马上调用getStatus方法获取redis返回结果)
 	template<class DATA_TYPE, class ...ARGS>
 	int execute(DATA_TYPE val, ARGS ...args)
 	{
@@ -654,7 +657,7 @@ public:
 
 		return cmd.getResult(this, timeout);
 	}
-	// 执行命令的真正函数
+	//调用成功返回值不小于零(redis返回内容保存在vec数组中)
 	template<class DATA_TYPE, class ...ARGS>
 	int execute(vector<string>& vec, DATA_TYPE val, ARGS ...args)
 	{
@@ -937,15 +940,15 @@ protected:
 	// 从连接池中拿一条连接
 	virtual shared_ptr<RedisConnect> grasp() const
 	{
-		//只有第一次会初始化
+		//只有第一次会初始化,就是
 		static ResPool<RedisConnect> pool([&]() {
 			shared_ptr<RedisConnect> redis = make_shared<RedisConnect>();
 
-			if (redis && redis->connect(host, port, timeout, memsz))
-			{
-				if (redis->auth(passwd)) return redis;
+			if (redis && redis->connect(host, port, timeout, memsz)){
+				if (redis->auth(passwd)) {
+					return redis;
+				}
 			}
-
 			return redis = NULL;
 		}, POOL_MAXLEN);
 
