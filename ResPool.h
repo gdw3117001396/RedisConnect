@@ -57,79 +57,12 @@ protected:
 	function<shared_ptr<T>()> func; // 函数指针
 public:
 
-	shared_ptr<T> grasp(){
-		int len = 0;
-			int idx = -1;
-			shared_ptr<T> tmp;
-			time_t now = time(NULL); // 获取当前时间
-
-			mtx.lock();  //加锁
-
-			len = vec.size();
-
-			for (int i = 0; i < len; i++)
-			{
-				Data& item = vec[i];
-				// 当前data保存保存的指针为空，或者data的引用数为1
-				if (item.data.get() == NULL || item.data.use_count() == 1)
-				{
-					if (tmp = item.data)
-					{
-						// 超时了
-						if (item.num < 100 && item.utime + timeout > now)
-						{
-							shared_ptr<T> data = item.get();
-
-							mtx.unlock();
-
-							return data;
-						}
-
-						item.data = NULL;
-					}
-
-					idx = i; // 当前的数据空的或者只有一个引用，并且没有超时
-				}
-			}
-
-			mtx.unlock();
-
-			if (idx < 0)
-			{
-				if (len >= maxlen) return shared_ptr<T>();
-
-				shared_ptr<T> data = func();
-
-				if (data.get() == NULL) return data;
-
-				mtx.lock();
-
-				if (vec.size() < maxlen) vec.push_back(data);
-
-				mtx.unlock();
-
-				return data;
-			}
-
-			shared_ptr<T> data = func();
-
-			if (data.get() == NULL) return data;
-
-			mtx.lock();
-
-			vec[idx].update(data);
-
-			mtx.unlock();
-
-			return data;
-	}
-
 	shared_ptr<T> get()
 	{
 		if (timeout <= 0) {
 			return func();
 		}
-/*
+
 		auto grasp = [&](){
 			int len = 0;
 			int idx = -1;
@@ -144,11 +77,11 @@ public:
 			{
 				Data& item = vec[i];
 				// 当前data保存保存的指针为空，或者data的引用数为1
-				if (item.data.get() == NULL || item.data.use_count() == 1)
+				if (item.data.get() == nullptr || item.data.use_count() == 1)
 				{
 					if (tmp = item.data)
 					{
-						// 超时了
+						// 拿的连接次数小于100，并且未超时
 						if (item.num < 100 && item.utime + timeout > now)
 						{
 							shared_ptr<T> data = item.get();
@@ -161,12 +94,13 @@ public:
 						item.data = NULL;
 					}
 
-					idx = i; // 当前的数据空的或者只有一个引用，并且没有超时
+					idx = i; // 拿的连接次数>=100，或者超时
 				}
 			}
 
 			mtx.unlock();
 
+			// 目前所有连接都满了
 			if (idx < 0)
 			{
 				if (len >= maxlen) return shared_ptr<T>();
@@ -196,7 +130,7 @@ public:
 
 			return data;
 		};
-*/
+
 
 		shared_ptr<T> data = grasp();
 
@@ -278,7 +212,7 @@ public:
 		this->timeout = timeout;
 		this->maxlen = maxlen;
 	}
-	// 初始最大长度和超时时间，还有函数指针
+	// 初始最大长度和超时时间，还有函数指针(获取连接的函数)
 	ResPool(function<shared_ptr<T>()> func, int maxlen = 8, int timeout = 60)
 	{
 		this->timeout = timeout;
