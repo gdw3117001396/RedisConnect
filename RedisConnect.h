@@ -59,285 +59,211 @@ public:
 	static int SOCKET_TIMEOUT;  // sokect超时
 
 public:
-	class Socket
-	{
+	class Socket{
 	protected:
 		SOCKET sock = INVALID_SOCKET;
 
 	public:
 		// 超时
-		static bool IsSocketTimeout()
-		{
-#ifdef XG_LINUX
-			return errno == 0 || errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
-#else
-			return WSAGetLastError() == WSAETIMEDOUT;
-#endif
-		}
-		// 关闭socket
-		static void SocketClose(SOCKET sock)
-		{
-			if (IsSocketClosed(sock)) return;
+		static bool IsSocketTimeout(){
+            return errno == 0 || errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
+        }
 
-#ifdef XG_LINUX
-			::close(sock);
-#else
-			::closesocket(sock);
-#endif
-		}
+        // 关闭socket
+        static void SocketClose(int sock){
+            if(IsSocketClosed(sock)){
+                return;
+            }
+            ::close(sock);
+        }
+		
 		// socket是否关闭了
-		static bool IsSocketClosed(SOCKET sock)
-		{
-			return sock == INVALID_SOCKET || sock < 0;
-		}
-		// 为socket设置发送超时时间
-		static bool SocketSetSendTimeout(SOCKET sock, int timeout)
-		{
-#ifdef XG_LINUX
-			struct timeval tv;
+		 static bool IsSocketClosed(int sock){
+            return sock < 0;
+        }
 
-			tv.tv_sec = timeout / 1000;
-			tv.tv_usec = timeout % 1000 * 1000;
-			// 发送超时
-			return setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)(&tv), sizeof(tv)) == 0;
-#else
-			return setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)(&timeout), sizeof(timeout)) == 0;
-#endif
-		}
+		// 为socket设置发送超时时间
+		static bool SocketSetSendTimeout(int sock, int timeout){
+            struct timeval tv;
+            tv.tv_sec = timeout / 1000;
+            tv.tv_usec = timeout % 1000 * 1000;
+            return setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char*)(&tv), sizeof(tv)) == 0;
+        }
+
 		// 为socket设置接收超时时间
-		static bool SocketSetRecvTimeout(SOCKET sock, int timeout)
-		{
-#ifdef XG_LINUX
-			struct timeval tv;
+		static bool SocketSetRecvTimeout(SOCKET sock, int timeout){
+            struct timeval tv;
 
 			tv.tv_sec = timeout / 1000;
 			tv.tv_usec = timeout % 1000 * 1000;
 
 			return setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)(&tv), sizeof(tv)) == 0;
-#else
-			return setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)(&timeout), sizeof(timeout)) == 0;
-#endif
-		}
+        }
 
 		// socket连接服务器
-		SOCKET SocketConnectTimeout(const char* ip, int port, int timeout)
-		{
-			u_long mode = 1;
-			struct sockaddr_in addr;
-			SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+		int SocketConnectTimeout(const char* ip, int port, int timeout){
+            u_long mode = 1;
+            struct sockaddr_in addr;
+            int sock = socket(AF_INET, SOCK_STREAM, 0);
+            if(sock < 0){
+                return INVALID_SOCKET;
+            }
 
-			if (IsSocketClosed(sock)) return INVALID_SOCKET;
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(port);
+            // addr.sin_addr.s_addr = inet_addr(ip);
+            inet_pton(AF_INET, ip, &addr.sin_addr);
 
-			addr.sin_family = AF_INET;
-			addr.sin_port = htons(port);
-			// addr.sin_addr.s_addr = inet_addr(ip);
-			inet_pton(AF_INET, ip, &addr.sin_addr);
-			// 设置套接字非阻塞，mode = 0表示清除，mode非0表示设置本套接口的非阻塞标志
-			ioctlsocket(sock, FIONBIO, &mode); 
-			mode = 0;
-			// 成功连接
-			if (::connect(sock, (struct sockaddr*)(&addr), sizeof(addr)) == 0)
-			{
-				ioctlsocket(sock, FIONBIO, &mode);
+            // 设置套接字非阻塞，mode = 0表示清除，mode非0表示设置本套接口的非阻塞标志
+            ioctl(sock, FIONBIO, &mode);
+            mode = 0;
 
-				return sock;
-			}
+            // 成功连接
+            if(::connect(sock, (struct sockaddr*)(&addr), sizeof(addr)) == 0){
+                ioctl(sock, FIONBIO, &mode);
+                return sock;
+            }
 
-#ifdef XG_LINUX
-			// 连接失败就用epoll来监听sock，看看有没有读事件
-			struct epoll_event ev;
-			struct epoll_event evs;
-			int handle = epoll_create(1);
+            struct epoll_event ev;
+            struct epoll_event evs;
+            int epoll_fd = epoll_create(5);
 
-			if (handle < 0)
-			{
-				SocketClose(sock);
-			
-				return INVALID_SOCKET;
-			}
-			
-			memset(&ev, 0, sizeof(ev));
-			
-			ev.events = EPOLLOUT | EPOLLERR | EPOLLHUP;
-			
-			epoll_ctl(handle, EPOLL_CTL_ADD, sock, &ev);
-			
-			if (epoll_wait(handle, &evs, 1, timeout) > 0)
-			{
-				if (evs.events & EPOLLOUT)
-				{
-					int res = FAIL;
-					socklen_t len = sizeof(res);
-					// 获取sock的错误
-					getsockopt(sock, SOL_SOCKET, SO_ERROR, (char*)(&res), &len);
-					ioctlsocket(sock, FIONBIO, &mode);
-					// 如果没有错误
-					if (res == 0)
-					{
-						::close(handle);
-			
-						return sock;
-					}
-				}
-			}
-			
-			::close(handle);
-#else
-			struct timeval tv;
+            if(epoll_fd < 0){
+                SocketClose(sock);
+                return INVALID_SOCKET;
+            }
 
-			fd_set ws;
-			FD_ZERO(&ws);
-			FD_SET(sock, &ws);
+            memset(&ev, 0, sizeof(ev));
 
-			tv.tv_sec = timeout / 1000;
-			tv.tv_usec = timeout % 1000 * 1000;
+            ev.events = EPOLLOUT | EPOLLERR | EPOLLHUP;
 
-			if (select(sock + 1, NULL, &ws, NULL, &tv) > 0)
-			{
-				int res = ERROR;
-				int len = sizeof(res);
-			
-				getsockopt(sock, SOL_SOCKET, SO_ERROR, (char*)(&res), &len);
-				ioctlsocket(sock, FIONBIO, &mode);
-			
-				if (res == 0) return sock;
-			}
-#endif
+            epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &ev);
 
-			SocketClose(sock);
-			
-			return INVALID_SOCKET;
-		}
+            if(epoll_wait(epoll_fd, &evs, 1, timeout) > 0){
+                if(evs.events & EPOLLOUT){
+                    int res = FAIL;
+                    socklen_t len = sizeof(res);
+                    // 获取sock的错误
+                    getsockopt(sock, SOL_SOCKET, SO_ERROR, (char*)(&res), &len);
+                    ioctl(sock, FIONBIO, &mode);
+                    // 如果没有错误
+                    if(res == 0){
+                        ::close(epoll_fd);
+                        return sock;
+                    }
+                }
+            }
+
+            ::close(epoll_fd);
+            SocketClose(sock);
+            return INVALID_SOCKET;
+        }
 
 	public:
 		// 关闭sock
-		void close()
-		{
-			SocketClose(sock);
-			sock = INVALID_SOCKET;
-		}
+		void close(){
+            SocketClose(sock);
+            sock = INVALID_SOCKET;
+        }
+
 		// sock是否关闭
-		bool isClosed() const
-		{
-			return IsSocketClosed(sock);
-		}
+		bool isClosed() const{
+            return IsSocketClosed(sock);
+        }
+
 		// 为sock设置发送超时时间
-		bool setSendTimeout(int timeout)
-		{
+		bool setSendTimeout(int timeout){
 			return SocketSetSendTimeout(sock, timeout);
 		}
+
 		// 为sock设置接受超时时间
-		bool setRecvTimeout(int timeout)
-		{
+		bool setRecvTimeout(int timeout){
 			return SocketSetRecvTimeout(sock, timeout);
 		}
+
 		// 连接
-		bool connect(const string& ip, int port, int timeout)
-		{
-			close();
-
-			sock = SocketConnectTimeout(ip.c_str(), port, timeout);
-
-			return IsSocketClosed(sock) ? false : true;
-		}
+		bool connect(const string& ip, int port, int timeout){
+            close();
+            sock = SocketConnectTimeout(ip.c_str(), port, timeout);
+            return IsSocketClosed(sock) ? false : true;
+        }
 
 	public:
 		// 发送消息
-		int write(const void* data, int count)
-		{
-			const char* str = (const char*)(data);
+		int write(const void* data, int count){
+            const char* str = (const char*)(data);
 
-			int num = 0;
-			int times = 0;
-			int writed = 0;
-
-			while (writed < count)
-			{
-				if ((num = send(sock, str + writed, count - writed, 0)) > 0)
-				{
-					if (num > 8)
-					{
-						times = 0;
-					}
-					else
-					{
-						if (++times > 100) return TIMEOUT;
-					}
-
-					writed += num;
-				}
-				else
-				{
-					if (IsSocketTimeout())
-					{
-						if (++times > 100) return TIMEOUT;
-
-						continue;
-					}
-
-					return NETERR;
-				}
-			}
-
-			return writed;
-		}
+            int num = 0;
+            int times = 0;
+            int writed = 0;
+            while(writed < count){
+                num = send(sock, str + writed, count - writed, 0);
+                if(num > 0){
+                    if(num > 8){
+                        times = 0;
+                    }else{
+                        if(++times > 100){
+                            return TIMEOUT;
+                        }
+                    }
+                    writed += num;
+                }else{
+                    if(IsSocketTimeout()){
+                        if(++times > 100){
+                            return TIMEOUT;
+                        }
+                        continue;;
+                    }
+                    return NETERR;
+                }
+            }
+            return writed;
+        }
+		
 		// 接受消息
-		int read(void* data, int count, bool completed)
-		{
-			char* str = (char*)(data);
+		int read(void* data, int count, bool completed){
+            char* str = (char*)(data);
 
-			if (completed)
-			{
-				int num = 0;
-				int times = 0;
-				int readed = 0;
-
-				while (readed < count)
-				{
-					if ((num = recv(sock, str + readed, count - readed, 0)) > 0)
-					{
-						if (num > 8)
-						{
-							times = 0;
-						}
-						else
-						{
-							if (++times > 100) return TIMEOUT;
-						}
-
-						readed += num;
-					}
-					else if (num == 0)
-					{
-						return NETCLOSE;
-					}
-					else
-					{
-						if (IsSocketTimeout())
-						{
-							if (++times > 100) return TIMEOUT;
-
-							continue;
-						}
-
-						return NETERR;
-					}
-				}
-
-				return readed;
-			}
-			else
-			{
-				int val = recv(sock, str, count, 0);
-
-				if (val > 0) return val;
-
-				if (val == 0) return NETCLOSE;
-
-				if (IsSocketTimeout()) return 0;
-
-				return NETERR;
-			}
+            if(completed){
+                int num = 0;
+                int times = 0;
+                int readed = 0;
+                while(num < count){
+                    num = recv(sock, str + readed, count - readed, 0);
+                    if(num > 0){
+                        if(num > 8){
+                            times = 0;
+                        }else{
+                            if(++times > 100){
+                                return TIMEOUT;
+                            }
+                        }
+                        readed += num;
+                    }else if(num == 0){
+                        return NETCLOSE;
+                    }else{
+                        if(IsSocketTimeout()){
+                            if(++times > 100){
+                                return TIMEOUT;
+                            }
+                            continue;
+                        }
+                        return NETERR;
+                    }
+                }
+                return readed;
+            }else{
+                int val = recv(sock, str, count, 0);
+                if(val > 0){
+                    return val;
+                }else if(val == 0){
+                    return NETCLOSE;
+                }else if(IsSocketTimeout()){
+                    return TIMEOUT;
+                }else{
+                    return NETERR;
+                }
+            }
 		}
 	};
 
@@ -511,7 +437,7 @@ public:
 			auto doWork = [&]() {
 				string msg = toString(); // 将vec中的每一项拼接成msg
 				Socket& sock = redis->sock;   
-				cout << msg << endl;
+
 				if (sock.write(msg.c_str(), msg.length()) < 0) {
 					return NETERR;
 				}
@@ -984,10 +910,11 @@ public:
 	{
 		return GetTemplate()->grasp();
 	}
-	//  未用到
+	//  初始化连接池
 	static void Setup(const string& host, int port, const string& passwd = "", int timeout = 3000, int memsz = 2 * 1024 * 1024)
 	{
 #ifdef XG_LINUX
+		// 不处理SIGPIPE信号，因为若是尝试send到一个disconnected socket上，就会让底层抛出一个SIGPIPE信号
 		signal(SIGPIPE, SIG_IGN);
 #else
 		WSADATA data; WSAStartup(MAKEWORD(2, 2), &data);
