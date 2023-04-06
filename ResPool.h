@@ -1,7 +1,6 @@
 #ifndef XG_RESPOOL_H
 #define XG_RESPOOL_H
 //////////////////////////////////////////////////////////////////////////////
-#include "typedef.h"
 
 #include <ctime>
 #include <mutex>
@@ -16,37 +15,35 @@
 #include <algorithm>
 #include <functional>
 
+#include "typedef.h"
 using namespace std;
 
-template<typename T> class ResPool
-{
+template<typename T> 
+class ResPool{
+	// 每一条连接
 	class Data{
 	public:
 		int num; // 拿的次数
 		time_t utime; // 时间
 		shared_ptr<T> data; // 数据
 
-		// utime修改为当前时间，然后num + 1,返回的是data指针
-		shared_ptr<T> get()
-		{
-			utime = time(NULL);
-			++num;
-
-			return data;
-		}
-		// 构造函数
-		Data(shared_ptr<T> data)
-		{
-			update(data);
-		}
+		// 使用次数+1，然后并更新最近一次的使用时间
+		shared_ptr<T> get(){
+            utime = time(NULL);
+            ++num;
+            return data;
+        } 
 
 		// 重置数据，时间，num,data都重置
-		void update(shared_ptr<T> data)
-		{
-			this->num = 0;
-			this->data = data;
-			this->utime = time(NULL);
-		}
+		void update(shared_ptr<T> data){
+            this->num = 0;
+            this->data = data;
+            this->utime = time(NULL);
+        }
+
+		Data(shared_ptr<T> data){
+            update(data);
+        }
 	};
 
 protected:
@@ -55,170 +52,149 @@ protected:
 	int timeout; // 过期时间
 	vector<Data> vec; // 连接池
 	function<shared_ptr<T>()> func; // 函数指针
+
 public:
+	shared_ptr<T> grasp(){
+        int len = 0;
+        int idx = -1;
+        shared_ptr<T> tmp;
+        time_t now = time(NULL);
+        mtx.lock();
+        len = vec.size();
+        for(int i = 0; i < len; ++i){
+            Data& item = vec[i];
+            // 当前data保存保存的指针为空，或者data的引用数为1
+            if(item.data.get() == nullptr || item.data.use_count() == 1){
 
-	shared_ptr<T> get()
-	{
-		if (timeout <= 0) {
-			return func();
-		}
+                // 拿的连接次数小于100，并且未超时
+                if(tmp = item.data){
+                    if(item.num < 100 && item.utime + timeout > now){
+                        shared_ptr<T> data = item.get();
+                        mtx.unlock();
+                        return data;
+                    }
+                    item.data = nullptr;
+                }
+                idx = i;  // 拿的连接次数>=100，或者超时
+            }
+        }
+        mtx.unlock();
 
-		auto grasp = [&](){
-			int len = 0;
-			int idx = -1;
-			shared_ptr<T> tmp;
-			time_t now = time(NULL); // 获取当前时间
+        // 目前所有连接都满了
+        if(idx < 0){
+            if(len >= maxlen){
+                return shared_ptr<T>();
+            }
 
-			mtx.lock();  //加锁
+            shared_ptr<T> data = func();
 
-			len = vec.size();
+            if(data.get() == nullptr){
+                return data;
+            }
 
-			for (int i = 0; i < len; i++)
-			{
-				Data& item = vec[i];
-				// 当前data保存保存的指针为空，或者data的引用数为1
-				if (item.data.get() == nullptr || item.data.use_count() == 1)
-				{
-					if (tmp = item.data)
-					{
-						// 拿的连接次数小于100，并且未超时
-						if (item.num < 100 && item.utime + timeout > now)
-						{
-							shared_ptr<T> data = item.get();
+            mtx.lock();
+            if(vec.size() < maxlen){
+                vec.push_back(data);
+            }
+            mtx.unlock();
+            return data;
+        }
 
-							mtx.unlock();
+        shared_ptr<T> data = func();
+        if(data.get() == nullptr){
+            return data;
+        }
 
-							return data;
-						}
+        mtx.lock();
 
-						item.data = NULL;
-					}
+        vec[idx].update(data);
 
-					idx = i; // 拿的连接次数>=100，或者超时
-				}
-			}
+        mtx.unlock();
 
-			mtx.unlock();
+        return data;
+    }
 
-			// 目前所有连接都满了
-			if (idx < 0)
-			{
-				if (len >= maxlen) return shared_ptr<T>();
+    shared_ptr<T> get(){
+        if(timeout <= 0){
+            return func();
+        }
 
-				shared_ptr<T> data = func();
+        shared_ptr<T> data = grasp();
 
-				if (data.get() == NULL) return data;
+        if(data){
+            return data;
+        }
 
-				mtx.lock();
+        time_t endtime = time(NULL) + 3;
+        
+        while(true){
+            Sleep(10);
+            // 抓取一条连接
+            if(data = grasp()){
+                return data;
+            }
+            if(endtime < time(NULL)){
+                break;
+            }
+        }
+        return data;
+    }
 
-				if (vec.size() < maxlen) vec.push_back(data);
+	void clear(){
+        lock_guard<mutex> lk(mtx);
+        vec.clear();
+    }
 
-				mtx.unlock();
+	int getLength() const{
+        return vec.size();
+    }
 
-				return data;
-			}
-
-			shared_ptr<T> data = func();
-
-			if (data.get() == NULL) return data;
-
-			mtx.lock();
-
-			vec[idx].update(data);
-
-			mtx.unlock();
-
-			return data;
-		};
-
-
-		shared_ptr<T> data = grasp();
-
-		if (data) return data;
-
-		time_t endtime = time(NULL) + 3;
-
-		while (true)
-		{
-			Sleep(10);
-			// 抓取一条连接
-			if (data = grasp()) return data;
-
-			if (endtime < time(NULL)) break;
-		}
-
-		return data;
-	}
-	void clear()
-	{
-		lock_guard<mutex> lk(mtx);
-
-		vec.clear();
-	}
-
-	int getLength() const
-	{
-		return maxlen;
-	}
-
-	int getTimeout() const
-	{
+    int getTimeout() const{
 		return timeout;
 	}
+
 	// 遍历数据，将第一个和传入的data一样的置空
-	void disable(shared_ptr<T> data)
-	{
-		lock_guard<mutex> lk(mtx);
+	 void disable(shared_ptr<T> data){
+        lock_guard<mutex> lk(mtx);
+        for(Data& item : vec){
+            if(data == item.data){
+                item.data = nullptr;
+                break;
+            }
+        }
+    }
 
-		for (Data& item : vec)
-		{
-			if (data == item.data)
-			{
-				item.data = NULL;
-
-				break;
-			}
-		}
-	}
 	// 设置最大长度，如果数据超过了最大长度直接清空
-	void setLength(int maxlen)
-	{
-		lock_guard<mutex> lk(mtx);
+	void setLength(int maxLen){
+        lock_guard<mutex> lk(mtx);
+        this->maxlen = maxlen;
+        if(vec.size() > maxlen){
+            vec.clear();
+        }
+    }
 
-		this->maxlen = maxlen;
-
-		if (vec.size() > maxlen) vec.clear();
-	}
 	// 设置超时时间
-	void setTimeout(int timeout)
-	{
-		lock_guard<mutex> lk(mtx);
-
+	void setTimeout(int timeout){
+        lock_guard<mutex> lk(mtx);
 		this->timeout = timeout;
+        if(timeout <= 0){
+            vec.clear();
+        }
+    }
 
-		if (timeout <= 0) vec.clear();
-	}
-	// 
-	void setCreator(function<shared_ptr<T>()> func)
-	{
-		lock_guard<mutex> lk(mtx);
-
+	// 设置连接函数
+	void setCreater(function<shared_ptr<T>()> func){
+        lock_guard<mutex> lk(mtx);
 		this->func = func;
 		this->vec.clear();
-	}
+    }
+
 	// 初始最大长度和超时时间
-	ResPool(int maxlen = 8, int timeout = 60)
-	{
-		this->timeout = timeout;
-		this->maxlen = maxlen;
-	}
+	ResPool(int _maxlen = 8, int _timeout = 60): maxlen(_maxlen), timeout(_timeout){}
+	
 	// 初始最大长度和超时时间，还有函数指针(获取连接的函数)
-	ResPool(function<shared_ptr<T>()> func, int maxlen = 8, int timeout = 60)
-	{
-		this->timeout = timeout;
-		this->maxlen = maxlen;
-		this->func = func;
-	}
+	ResPool(function<shared_ptr<T>()> _func, int _maxlen = 8, int _timeout = 60): func(_func), maxlen(_maxlen), timeout(_timeout){}
+
 };
 //////////////////////////////////////////////////////////////////////////////
 #endif

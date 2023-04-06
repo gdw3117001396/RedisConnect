@@ -43,11 +43,6 @@ class ResPool{
             update(data);
         }
 
-        void update(shared_ptr<T> data){
-            this->num = 0;
-            this->data = data;
-            this->utime = time(NULL);
-        }
     };
 protected:
     mutex mtx; 
@@ -65,7 +60,10 @@ public:
         len = vec.size();
         for(int i = 0; i < len; ++i){
             Data& item = vec[i];
+            // 当前data保存保存的指针为空，或者data的引用数为1
             if(item.data.get() == nullptr || item.data.use_count() == 1){
+
+                // 拿的连接次数小于100，并且未超时
                 if(tmp = item.data){
                     if(item.num < 100 && item.utime + timeout > now){
                         shared_ptr<T> data = item.get();
@@ -74,7 +72,7 @@ public:
                     }
                     item.data = nullptr;
                 }
-                idx = i;
+                idx = i;  // 拿的连接次数>=100，或者超时
             }
         }
         mtx.unlock();
@@ -129,6 +127,7 @@ public:
         
         while(true){
             Sleep(10);
+            // 抓取一条连接
             if(data = grasp()){
                 return data;
             }
