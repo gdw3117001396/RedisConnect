@@ -267,8 +267,7 @@ public:
 		}
 	};
 
-	class Command
-	{
+	class Command{
 		friend RedisConnect;
 
 	protected:
@@ -278,133 +277,144 @@ public:
 		vector<string> vec;  // 所有的命令字段
 
 	protected:
-		// 解析返回消息
-		int parse(const char* msg, int len)
-		{
-			/*
-				简单字符串：Simple Strings，第一个字节响应 +
-				错误：Errors，第一个字节响应 -
-				整型：Integers，第一个字节响应 :
-				批量字符串：Bulk Strings，第一个字节响应 $
+		// 解析返回消息,len表示msg的长度
+        int parse(const char* msg, int len){
+            /*
+                *2
+                $4
+                keys
+                $1
+                *
+            */
+            /*
+				简单字符串：Simple Strings，第一个字节响应 +  "+OK\r\n"
+				错误：Errors，第一个字节响应 -  "-Error message\r\n"
+				整型：Integers，第一个字节响应 :   :0\r\n 和 :1000\r\n
+				批量字符串：Bulk Strings，第一个字节响应 $  
+                    批量回复，是一个大小在 512 Mb 的二进制安全字符串  
+                    "$5\r\nhello\r\n" 
 				数组：Arrays，第一个字节响应 *
+                "*2\r\n
+                  $5\r\n
+                  hello\r\n
+                  $5\r\n
+                  world\r\n"
 			*/
-			if (*msg == '$')
-			{
-				const char* end = parseNode(msg, len);
+            if (*msg == '$'){
+                const char* end = parseNode(msg, len);
+                if(end == NULL){
+                    return DATAERR;
+                }
+                switch (end - msg){
+                    case 0:
+                        return TIMEOUT;
+                    case 1:
+                        return NOTFOUND;
+                }
+                return OK;
+            }
 
-				if (end == NULL) return DATAERR;
+            const char* str = msg + 1;
+            const char* end = strstr(str, "\r\n");
 
-				switch (end - msg){
-					case 0 : 
-						return TIMEOUT;
-					case -1 : 
-						return NOTFOUND;
-				}
+            if(end == NULL){
+                return TIMEOUT;
+            }
 
-				return OK;
-			}
+            if(*msg == '+' || *msg == '-' || *msg == ':'){
+                this->status = OK;
+                this->msg = string(str, end);
+                if(*msg == '+'){
+                    return OK;
+                }
+                if(*msg == '-'){
+                    return FAIL;
+                }
+                // 如果是整型,如果是整型status就是数字
+                this->status = atoi(str);
+                return OK;
+            }
+            /*
+                "*2\r\n
+                  $5\r\n
+                  hello\r\n
+                  $5\r\n
+                  world\r\n"
+            */
+            if(*msg == '*'){
+                int cnt = atoi(str);
+                const char* tail = msg + len;
+                vec.clear();
+                str = end + 2;
+                while(cnt-- > 0){
+                    if(*str == '*'){
+                        return parse(str, tail - str);
+                    }
+                    end = parseNode(str, tail - str);
 
-			const char* str = msg + 1;
-			const char* end = strstr(str, "\r\n");
+                    if(end == NULL){
+                        return DATAERR;
+                    }
+                    if(end == str){
+                        return TIMEOUT;
+                    }
 
-			if (end == NULL) {
-				return TIMEOUT;
-			}
+                    str = end;
+                }
+                return res.size();
+            }
+        }
 
-			if (*msg == '+' || *msg == '-' || *msg == ':')
-			{
-				this->status = OK;
-				this->msg = string(str, end);
-
-				if (*msg == '+') return OK;
-				if (*msg == '-') return FAIL;
-				// 如果是整型
-				this->status = atoi(str);
-
-				return OK;
-			}
-
-			if (*msg == '*')
-			{
-				int cnt = atoi(str);
-				const char* tail = msg + len;
-
-				vec.clear();
-				str = end + 2;
-
-				while (cnt > 0)
-				{
-					if (*str == '*') return parse(str, tail - str);
-
-					end = parseNode(str, tail - str);
-
-					if (end == NULL) return DATAERR;
-					if (end == str) return TIMEOUT;
-
-					str = end;
-					cnt--;
-				}
-
-				return res.size();
-			}
-
-			return DATAERR;
-		}
-		const char* parseNode(const char* msg, int len)
-		{
-			const char* str = msg + 1;
-			// 返回str种第一次出现"\r\n"的位置,如果不存在返回null
-			const char* end = strstr(str, "\r\n");
-
-			if (end == NULL) return msg;
-
-			int sz = atoi(str);
-
-			if (sz < 0) return msg + sz;
-
-			str = end + 2;
-			end = str + sz + 2;
-
-			if (msg + len < end) return msg;
-
-			res.push_back(string(str, str + sz));
-
-			return end;
-		}
+        const char* parseNode(const char* msg, int len){
+            const char* str = msg + 1;
+            // 返回str种第一次出现"\r\n"的位置,如果不存在就直接返回msg
+            const char* end = strstr(str, "\r\n");
+            if(end == NULL){
+                return msg;
+            }
+            // "$5\r\nhello\r\n"  sz = 5
+            int sz = atoi(str);
+            if(sz < 0){
+                return msg + sz;
+            }
+            // 跳过\r\n
+            str = end + 2;
+            end = str + sz + 2;
+            if(msg + len < end){
+                return msg;
+            }
+            res.push_back(string(str, str + sz));
+            return end;
+        }
 
 	public:
-		Command()
-		{
-			this->status = 0;
-		}
-		Command(const string& cmd)
-		{
-			vec.push_back(cmd);
-			this->status = 0;
-		}
-		void add(const char* val)
-		{
-			vec.push_back(val);
-		}
-		void add(const string& val)
-		{
-			vec.push_back(val);
-		}
-		template<class DATA_TYPE> void add(DATA_TYPE val)
-		{
-			add(to_string(val));
-		}
-		template<class DATA_TYPE, class ...ARGS> void add(DATA_TYPE val, ARGS ...args)
-		{
-			add(val);
-			add(args...);
-		}
+		Command(): status(0){}
+        Command(const string& cmd): status(0){
+            vec.push_back(cmd);
+        }
+
+        void add(const char* val){
+            vec.push_back(val);
+        }
+
+        void add(const string& val){
+            vec.push_back(val);
+        }
+        
+        template<typename T>
+        void add(T val){
+            add(to_string(val));
+        }
+
+        template<typename T, typename ...ARGS>
+        void add(T val, ARGS ...args){
+            add(val);
+            add(args...);
+        }
 
 	public:
 		// 将vec用特定的方式拼接成string
-		string toString() const
-		{
-			ostringstream out;
+        string toString() const{
 			// set k1 v1 
 			/*  resp协议
 				*3\r\n
@@ -412,77 +422,67 @@ public:
 					$2\r\nk1\r\n
 					$2\r\nv2\r\n
 			*/
-			//  *vec的个数加上"\r\n"
-			out << "*" << vec.size() << "\r\n";
-			// 然后对vec中的那个item都用 "$" + item的长度 + "\r\n" + item + "\r\n"
-			for (const string& item : vec)
-			{
-				out << "$" << item.length() << "\r\n" << item << "\r\n";
-			}
+            string out;
+            out += "*" + to_string(vec.size()) + "\r\n";
+            for(const string& item : vec){
+                out += "$" + to_string(item.size()) + + "\r\n" + item +"\r\n";
+            }
+            return out;
+        }
 
-			return out.str();
-		}
-		string get(int idx) const
-		{
-			return res.at(idx);
-		}
-		//
-		const vector<string>& getDataList() const
-		{
-			return res;
-		}
+		// 获取指定索引的结果
+        string get(int idx) const{
+            return res.at(idx);
+        }
+
+        // 获得整个结果集
+        const vector<string>& getDataList() const{
+            return res;
+        }
+
 		int getResult(RedisConnect* redis, int timeout)
 		{
 			// 发送消息，再接收消息
-			auto doWork = [&]() {
-				string msg = toString(); // 将vec中的每一项拼接成msg
-				Socket& sock = redis->sock;   
+			auto doWork = [&](){
+                string msg = toString();
+                cout<< msg << endl;
+                Socket& sock = redis->sock;
+                if(sock.write(msg.c_str(), msg.size()) < 0){
+                    return NETERR;
+                }
 
-				if (sock.write(msg.c_str(), msg.length()) < 0) {
-					return NETERR;
-				}
-				int len = 0;
-				int delay = 0;
-				int readed = 0;
-				char* dest = redis->buffer;  // 接受数据缓冲区
-				const int maxsz = redis->memsz;  // 
+                int len = 0;
+                int delay = 0;
+                int readed = 0;
+                char* dest = redis->buffer;
+                const int maxsz = redis->memsz;
 
-				while (readed < maxsz)
-				{
-					if ((len = sock.read(dest + readed, maxsz - readed, false)) < 0) return len;
-
-					if (len == 0)
-					{
-						delay += SOCKET_TIMEOUT;
-
-						if (delay > timeout){
-							return TIMEOUT;
-						}
-					}else{
-						dest[readed += len] = 0;
-
-						if ((len = parse(dest, readed)) == TIMEOUT)
-						{
-							delay = 0;
-						}
-						else
-						{
-							return len;
-						}
-					}
-				}
-
-				return PARAMERR;
-			};
+                while(readed < maxsz){
+                    if((len = sock.read(dest + readed, maxsz - readed, false)) < 0){
+                        return len;
+                    }else if(len == 0){
+                        delay += SOCKET_TIMEOUT;
+                        if(delay > timeout){
+                            return TIMEOUT;
+                        }
+                    }else{
+                        dest[readed += len] = 0;
+                        if((len = parse(dest, readed)) == TIMEOUT){
+                            delay = 0;
+                        }else{
+                            return len;
+                        }
+                    }
+                }
+                return PARAMERR;
+            };
 
 			status = 0;
-			msg.clear();
-
-			redis->code = doWork();
-
-			if (redis->code < 0 && msg.empty())
-			{
-				switch (redis->code)
+            msg.clear();
+            redis->code = doWork();
+            
+            if(redis->code < 0 && msg.empty()){
+                switch (redis->code)
 				{
 				case SYSERR:
 					msg = "system error";
@@ -503,12 +503,10 @@ public:
 					msg = "unknown error";
 					break;
 				}
-			}
-
-			redis->status = status;
-			redis->msg = msg;
-
-			return redis->code;
+            }
+            redis->status = status;
+            redis->msg = msg;
+            return redis->code;
 		}
 	};
 
@@ -533,78 +531,71 @@ public:
 
 public:
 	// 获取状态
-	int getStatus() const
-	{
+	int getStatus() const{
 		return status;
 	}
-	// 返回错误码，redis连接的错误
-	int getErrorCode() const
-	{
-		if (sock.isClosed()) return FAIL;
+    
+    // 返回错误码，redis连接的错误,无错误返回0
+    int getErrorCode() const{
+        if(sock.isClosed()){
+            return FAIL;
+        }
+        return code < 0 ? code : 0;
+    }
 
-		return code < 0 ? code : 0;
-	}
-	// 返回错误信息
-	string getErrorString() const
-	{
-		return msg;
-	}
+    // 返回错误信息
+    string getErrorString() const{
+        return msg;
+    }
 
 public:
-	void close()
-	{
-		if (buffer)
-		{
-			delete[] buffer;
-			buffer = NULL;
-		}
+	void close(){
+        if(buffer){
+            delete[] buffer;
+            buffer = NULL;
+        }
+        sock.close();
+    }
 
-		sock.close();
-	}
+    bool reconnect(){
+        if(host.empty()){
+            return false;
+        }
 
-	bool reconnect()
-	{
-		if (host.empty()) return false;
+        return connect(host, port, timeout, memsz) && auth(passwd) > 0;
+    }
 
-		return connect(host, port, timeout, memsz) && auth(passwd) > 0;
-	}
+    int execute(Command& cmd){
+        return cmd.getResult(this, timeout);
+    }
 
-	int execute(Command& cmd)
-	{
-		return cmd.getResult(this, timeout);
-	}
 	//调用成功返回值不小于零(你可以马上调用getStatus方法获取redis返回结果)
-	template<class DATA_TYPE, class ...ARGS>
-	int execute(DATA_TYPE val, ARGS ...args)
-	{
-		Command cmd;
+	template<typename T, typename ...ARGS>
+    int execute(T val, ARGS ...args){
+        Command cmd;
+        cmd.add(val, args...);
+        return execute(cmd);
+    }
 
-		cmd.add(val, args...);
-
-		return cmd.getResult(this, timeout);
-	}
 	//调用成功返回值不小于零(redis返回内容保存在vec数组中)
-	template<class DATA_TYPE, class ...ARGS>
-	int execute(vector<string>& vec, DATA_TYPE val, ARGS ...args)
-	{
-		Command cmd;
+	template<typename T, typename ...ARGS>
+    int execute(vector<string>& vec, T val, ARGS ...args){
+        Command cmd;
+        cmd.add(val, args...);
 
-		cmd.add(val, args...);
+        execute(cmd);
 
-		cmd.getResult(this, timeout);
+        if(code > 0){
+            swap(vec, cmd.res);
+        }
+        return code;
+    }
 
-		if (code > 0) std::swap(vec, cmd.res);
-
-		return code;
-	}
 	// 初始化连接
-	bool connect(const string& host, int port, int timeout = 3000, int memsz = 2 * 1024 * 1024)
-	{
-		close();
-		// 真正的在socket类中进行连接
-		if (sock.connect(host, port, timeout))
-		{
-			sock.setSendTimeout(SOCKET_TIMEOUT);
+	bool connect(const string& host, int port, int timeout = 3000, int memsz = 2 * 1024 * 1024){
+        close();
+        if(sock.connect(host, port, timeout)){
+            sock.setSendTimeout(SOCKET_TIMEOUT);
 			sock.setRecvTimeout(SOCKET_TIMEOUT);
 
 			this->host = host;
@@ -612,156 +603,148 @@ public:
 			this->memsz = memsz;
 			this->timeout = timeout;
 			this->buffer = new char[memsz + 1];
-		}
-
-		return buffer ? true : false;
-	}
+        }
+        return buffer ? true : false;
+    }
 
 public:
-	int ping()
-	{
-		return execute("ping");
-	}
-	int del(const string& key)
-	{
-		return execute("del", key);
-	}
-	int ttl(const string& key)
-	{
-		return execute("ttl", key) == OK ? status : code;
-	}
-	int hlen(const string& key)
-	{
-		return execute("hlen", key) == OK ? status : code;
-	}
-	int auth(const string& passwd)
-	{
-		this->passwd = passwd;
+	int ping(){
+        return execute("ping");
+    }
 
-		if (passwd.empty()) return OK;
+    int del(const string& key){
+        return execute("del", key);
+    }
 
-		return execute("auth", passwd);
-	}
-	int get(const string& key, string& val)
-	{
-		vector<string> vec;
+    int ttl(const string& key){
+        return execute("ttl", key) == OK ? status : code;
+    }    
 
-		if (execute(vec, "get", key) <= 0) return code;
+    int hlen(const string& key){
+        return execute("hlen", key) == OK ? status : code;
+    }
 
-		val = vec[0];
+    int auth(const string& passwd){
+        this->passwd = passwd;
+        if(passwd.empty()){
+            return OK;
+        }
+        return execute("auth", passwd);
+    }
 
-		return code;
-	}
-	int decr(const string& key, int val = 1)
-	{
+    int get(const string& key, string& val){
+        vector<string> vec;
+        if(execute(vec, "get", key) <= 0){
+            return code;
+        }
+
+        val = vec[0];
+        return code;
+    }
+
+    int decr(const string& key, int val = 1){
 		return execute("decrby", key, val);
 	}
-	int incr(const string& key, int val = 1)
-	{
+
+	int incr(const string& key, int val = 1){
 		return execute("incrby", key, val);
 	}
-	int expire(const string& key, int timeout)
-	{
+
+	int expire(const string& key, int timeout){
 		return execute("expire", key, timeout);
 	}
-	// 查看键值是否存在
-	int keys(vector<string>& vec, const string& key)
-	{
+
+    // 查看键值是否存在
+	int keys(vector<string>& vec, const string& key){
 		return execute(vec, "keys", key);
 	}
-	int hdel(const string& key, const string& filed)
-	{
+
+	int hdel(const string& key, const string& filed){
 		return execute("hdel", key, filed);
 	}
-	int hget(const string& key, const string& filed, string& val)
-	{
+
+    int hget(const string& key, const string& filed, string& val){
 		vector<string> vec;
 
-		if (execute(vec, "hget", key, filed) <= 0) return code;
+        if(execute(vec, "hget", key, filed) <= 0){
+            return code;
+        }    
 
-		val = vec[0];
+        val = vec[0];
+        return code;
+    }
 
-		return code;
-	}
-	int set(const string& key, const string& val, int timeout = 0)
-	{
+    int set(const string& key, const string& val, int timeout = 0){
 		return timeout > 0 ? execute("setex", key, timeout, val) : execute("set", key, val);
 	}
-	int hset(const string& key, const string& filed, const string& val)
-	{
+
+    int hset(const string& key, const string& filed, const string& val){
 		return execute("hset", key, filed, val);
 	}
 
 public:
-	int pop(const string& key, string& val)
-	{
+    int pop(const string& key, string& val){
 		return lpop(key, val);
 	}
-	int lpop(const string& key, string& val)
-	{
+
+	int lpop(const string& key, string& val){
 		vector<string> vec;
 
-		if (execute(vec, "lpop", key) <= 0) return code;
+		if (execute(vec, "lpop", key) <= 0) {
+            return code;
+        }
 
 		val = vec[0];
 
 		return code;
 	}
-	int rpop(const string& key, string& val)
-	{
+
+	int rpop(const string& key, string& val){
 		vector<string> vec;
 
-		if (execute(vec, "rpop", key) <= 0) return code;
+		if (execute(vec, "rpop", key) <= 0) {
+            return code;
+        }
 
 		val = vec[0];
 
 		return code;
 	}
-	int push(const string& key, const string& val)
-	{
-		return rpush(key, val);
-	}
-	int lpush(const string& key, const string& val)
-	{
+
+	int lpush(const string& key, const string& val){
 		return execute("lpush", key, val);
 	}
-	int rpush(const string& key, const string& val)
-	{
+
+	int rpush(const string& key, const string& val){
 		return execute("rpush", key, val);
 	}
-	int range(vector<string>& vec, const string& key, int start, int end)
-	{
-		return execute(vec, "lrange", key, start, end);
-	}
-	int lrange(vector<string>& vec, const string& key, int start, int end)
-	{
+
+	int lrange(vector<string>& vec, const string& key, int start, int end){
 		return execute(vec, "lrange", key, start, end);
 	}
 
 public:
-	int zrem(const string& key, const string& filed)
-	{
+	int zrem(const string& key, const string& filed){
 		return execute("zrem", key, filed);
 	}
-	int zadd(const string& key, const string& filed, int score)
-	{
+
+	int zadd(const string& key, const string& filed, int score){
 		return execute("zadd", key, score, filed);
 	}
-	int zrange(vector<string>& vec, const string& key, int start, int end, bool withscore = false)
-	{
+
+	int zrange(vector<string>& vec, const string& key, int start, int end, bool withscore = false){
 		return withscore ? execute(vec, "zrange", key, start, end, "withscores") : execute(vec, "zrange", key, start, end);
 	}
 
-
 public:
-	template<class ...ARGS>
-	int eval(const string& lua)
-	{
+    template<typename ...ARGS>
+	int eval(const string& lua){
 		vector<string> vec;
 
 		return eval(lua, vec);
 	}
-	template<class ...ARGS>
+
+	template<typename ...ARGS>
 	int eval(const string& lua, const string& key, ARGS ...args)
 	{
 		vector<string> vec;
@@ -770,14 +753,16 @@ public:
 	
 		return eval(lua, vec, args...);
 	}
-	template<class ...ARGS>
+	
+	template<typename ...ARGS>
 	int eval(const string& lua, const vector<string>& keys, ARGS ...args)
 	{
 		vector<string> vec;
 
 		return eval(vec, lua, keys, args...);
 	}
-	template<class ...ARGS>
+
+	template<typename ...ARGS>
 	int eval(vector<string>& vec, const string& lua, const vector<string>& keys, ARGS ...args)
 	{
 		int len = 0;
@@ -788,8 +773,9 @@ public:
 
 		if (len-- > 0)
 		{
-			for (int i = 0; i < len; i++) cmd.add(keys[i]);
-
+			for (int i = 0; i < len; i++) {
+                cmd.add(keys[i]);
+            }
 			cmd.add(keys.back(), args...);
 		}
 
@@ -800,16 +786,13 @@ public:
 		return code;
 	}
 
-	string get(const string& key)
-	{
-		string res;
+	string get(const string& key){
+        string res;
+        get(key, res);
+        return res;
+    }
 
-		get(key, res);
-
-		return res;
-	}
-	string hget(const string& key, const string& filed)
-	{
+    string hget(const string& key, const string& filed){
 		string res;
 
 		hget(key, filed, res);
@@ -817,45 +800,40 @@ public:
 		return res;
 	}
 
-	const char* getLockId()
-	{
-		thread_local char id[0xFF] = {0};
-
-		auto GetHost = [](){
+	const char* getLockId(){
+        thread_local char id[0xFF] = {0};
+        
+        auto GetHost = [](){
 			char hostname[0xFF];
 
-			if (gethostname(hostname, sizeof(hostname)) < 0) return "unknow host";
-
+			if (gethostname(hostname, sizeof(hostname)) < 0) {
+				return "unknow host";
+			}
+			
 			struct hostent* data = gethostbyname(hostname);
 
 			return (const char*)inet_ntoa(*(struct in_addr*)(data->h_addr_list[0]));
 		};
 
-		if (*id == 0)
-		{
-#ifdef XG_LINUX
-			snprintf(id, sizeof(id) - 1, "%s:%ld:%ld", GetHost(), (long)getpid(), (long)syscall(SYS_gettid));
-#else
-			snprintf(id, sizeof(id) - 1, "%s:%ld:%ld", GetHost(), (long)GetCurrentProcessId(), (long)GetCurrentThreadId());
-#endif
-		}
+        if(*id == 0){
+            snprintf(id, sizeof(id) - 1, "%s:%ld:%ld", GetHost(), (long)getpid(), (long)syscall(SYS_gettid));
+        }
+        return id;
+    }
 
-		return id;
-	}
-	bool unlock(const string& key)
-	{
+    bool unlock(const string& key){
 		const char* lua = "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end";
 
 		return eval(lua, key, getLockId()) > 0 && status == OK;
 	}
-	bool lock(const string& key, int timeout = 30)
-	{
+
+    bool lock(const string& key, int timeout = 30){
 		int delay = timeout * 1000;
 
-		for (int i = 0; i < delay; i += 10)
-		{
-			if (execute("set", key, getLockId(), "nx", "ex", timeout) >= 0) return true;
-
+		for (int i = 0; i < delay; i += 10){
+			if (execute("set", key, getLockId(), "nx", "ex", timeout) >= 0) {
+                return true;
+            }
 			Sleep(10);
 		}
 
@@ -864,8 +842,7 @@ public:
 
 protected:
 	// 从连接池中拿一条连接
-	virtual shared_ptr<RedisConnect> grasp() const
-	{
+	virtual shared_ptr<RedisConnect> grasp() const{
 		//只有第一次会初始化,就是
 		static ResPool<RedisConnect> pool([&]() {
 			shared_ptr<RedisConnect> redis = make_shared<RedisConnect>();
@@ -892,33 +869,29 @@ protected:
 	}
 
 public:
-	static bool CanUse()
-	{
+	static bool CanUse(){
 		return GetTemplate()->port > 0;
 	}
-	static RedisConnect* GetTemplate()
-	{
+
+	static RedisConnect* GetTemplate(){
 		static RedisConnect redis;
 		return &redis;
 	}
-	static void SetMaxConnCount(int maxlen)
-	{
+
+	static void SetMaxConnCount(int maxlen){
 		if (maxlen > 0) POOL_MAXLEN = maxlen;
 	}
+
 	// 获取redis连接实例
-	static shared_ptr<RedisConnect> Instance()
-	{
+	static shared_ptr<RedisConnect> Instance(){
 		return GetTemplate()->grasp();
 	}
+
 	//  初始化连接池
-	static void Setup(const string& host, int port, const string& passwd = "", int timeout = 3000, int memsz = 2 * 1024 * 1024)
-	{
-#ifdef XG_LINUX
+	static void Setup(const string& host, int port, const string& passwd = "", int timeout = 3000, int memsz = 2 * 1024 * 1024){
 		// 不处理SIGPIPE信号，因为若是尝试send到一个disconnected socket上，就会让底层抛出一个SIGPIPE信号
 		signal(SIGPIPE, SIG_IGN);
-#else
-		WSADATA data; WSAStartup(MAKEWORD(2, 2), &data);
-#endif
+
 		RedisConnect* redis = GetTemplate();
 
 		redis->host = host;

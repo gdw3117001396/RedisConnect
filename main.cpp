@@ -28,7 +28,7 @@ int main(int argc, char** argv)
 	redis->execute("del", "key");
 
 	//获取分布式锁
-	/*if (redis->lock("lockey"))
+	if (redis->lock("lockey"))
 	{
 		puts("获取分布式锁成功");
 
@@ -37,7 +37,7 @@ int main(int argc, char** argv)
 		{
 			puts("释放分布式锁成功");
 		}
-	}*/
+	}
  
 	return 0;
 }
