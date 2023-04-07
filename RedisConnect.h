@@ -34,10 +34,7 @@ using namespace std;
 // 主要的redis连接类
 class RedisConnect
 {
-	typedef std::mutex Mutex;
-	typedef std::lock_guard<mutex> Locker;
-
-	friend class Command;
+	// friend class Command;
 
 public:
 	static const int OK = 1;   // 正常
