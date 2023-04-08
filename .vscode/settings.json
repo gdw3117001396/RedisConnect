@@ -46,6 +46,7 @@
         "initializer_list": "cpp",
         "iostream": "cpp",
         "stdexcept": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "queue": "cpp"
     }
 }

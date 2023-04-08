@@ -32,8 +32,7 @@ typedef int SOCKET;
 using namespace std;
 
 // 主要的redis连接类
-class RedisConnect
-{
+class RedisConnect{
 	// friend class Command;
 
 public:
@@ -209,7 +208,7 @@ public:
                         if(++times > 100){
                             return TIMEOUT;
                         }
-                        continue;;
+                        continue;
                     }
                     return NETERR;
                 }
