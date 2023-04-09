@@ -70,5 +70,3 @@ RedisConnPool::RedisConnPool() : useCount_(0), freeCount_(0) {
 RedisConnPool::~RedisConnPool() {
     ClosePool();
 }
-
-int RedisConnect::SOCKET_TIMEOUT = 10;

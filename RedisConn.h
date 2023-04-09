@@ -3,7 +3,12 @@
 #include <errno.h>
 #include <netdb.h>
 #include <fcntl.h>
+#include <vector>
+#include <string>
+#include <memory>
+#include <iostream>
 #include <signal.h>
+#include <algorithm>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -16,7 +21,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/syscall.h>
-#include "RedisConnPool.h"
+#include "typedef.h"
 
 using namespace std;
 
@@ -39,7 +44,7 @@ public:
 	static const int AUTHFAIL = -12;  // 密码不对
 
 public:
-    static int SOCKET_TIMEOUT;  // sokect超时
+    static const int SOCKET_TIMEOUT = 10;  // sokect超时
 
 // Redis网络连接函数
 public:
@@ -805,6 +810,5 @@ protected:
     int sockFd_ = INVALID_SOCKET;  // TODO:也可以在构造函数初始化
     string passwd;  // 密码
 };
-
 
 #endif
